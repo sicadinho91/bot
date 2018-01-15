@@ -130,19 +130,46 @@ def gatecoin():
     gatecoinprice = {'BTC':[], 'ETH':[],'exchange':[], 'bid_btc':[], 'ask_btc':[], 'bid_eth':[], 'ask_eth':[]}
     for i in ['BTCUSD', 'ETHUSD']:
         url = 'https://api.gatecoin.com/Public/LiveTicker/%s'%i
+        url2 = 'https://api.gatecoin.com/Public/MarketDepth/%s'%i
+        gatecoinob = retrieve(url2)
+        bids = pd.DataFrame(gatecoinob['bids'])
+        bids['value'] = bids['price']*bids['volume']
+        bids['cumulative'] = bids['value'].cumsum()
+        asks = pd.DataFrame(gatecoinob['asks'])
+        asks['value'] = asks['price']*asks['volume']
+        asks['cumulative'] = asks['value'].cumsum()
         gatecoindata = retrieve(url)
         gatecoindf.append(gatecoindata)
         if i == 'BTCUSD':
             gatecoinprice['BTC'] = float(gatecoindata['ticker']['last'])
-            gatecoinprice['bid_btc'] = float(gatecoindata['ticker']['bid'])
-            gatecoinprice['ask_btc'] = float(gatecoindata['ticker']['ask'])
+            gatecoinprice['bid_btc'] = bids[bids.cumulative > 25000].iloc[0]['price']
+            gatecoinprice['ask_btc'] = asks[asks.cumulative > 25000].iloc[0]['price']
         else:
             gatecoinprice['ETH'] = float(gatecoindata['ticker']['last'])
-            gatecoinprice['bid_eth'] = float(gatecoindata['ticker']['bid'])
-            gatecoinprice['ask_eth'] = float(gatecoindata['ticker']['ask'])          
+            gatecoinprice['bid_eth'] = bids[bids.cumulative > 25000].iloc[0]['price']
+            gatecoinprice['ask_eth'] = asks[asks.cumulative > 25000].iloc[0]['price']          
     gatecoinprice['exchange'] = ('gatecoin')
     #print (gatecoinprice)
     return gatecoinprice   
+    
+def binance():
+    binancedf = []
+    binanceprice = {'BTC':[], 'ETH':[],'exchange':[], 'bid_btc':[], 'ask_btc':[], 'bid_eth':[], 'ask_eth':[]}
+    url = 'https://api.binance.com/api/v3/ticker/bookTicker'
+    binancedata = pd.DataFrame(retrieve(url))
+    binancedf.append(binancedata)
+    binanceprice['bid_btc'] = float(binancedata[binancedata['symbol']=='BTCUSDT']['bidPrice'])
+    binanceprice['ask_btc'] = float(binancedata[binancedata['symbol']=='BTCUSDT']['askPrice'])
+    binanceprice['bid_eth'] = float(binancedata[binancedata['symbol']=='ETHUSDT']['bidPrice'])
+    binanceprice['ask_eth'] = float(binancedata[binancedata['symbol']=='ETHUSDT']['askPrice'])         
+    binanceprice['exchange'] = ('binance')
+    url = 'https://api.binance.com/api/v3/ticker/price'
+    binancedata = pd.DataFrame(retrieve(url))
+    binancedf.append(binancedata)
+    binanceprice['BTC'] = float(binancedata[binancedata['symbol']=='BTCUSDT']['price'])
+    binanceprice['ETH'] = float(binancedata[binancedata['symbol']=='ETHUSDT']['price'])
+    #print (binanceprice)
+    return binanceprice  
     
 def main():
     start_time = time.time()
@@ -154,20 +181,24 @@ def main():
     p = polo()
     g = gdax()
     k = kraken()
-    l = liqui()
-    ku = kucoin()
+    #l = liqui()
+    #ku = kucoin()
     ga = gatecoin()
+    b = binance()
     #master.append(i)
     master.append(p)
     master.append(g)
-    master.append(k)
-    master.append(l)
-    master.append(ku)
+    #master.append(k)
+    #master.append(l)
+    #master.append(ku)
     master.append(ga)
+    master.append(b)
     master = pd.DataFrame(master)
+    print('BTC opportunity: ', round((((master['bid_btc'].max()/master['ask_btc'].min()) - 1) * 100), 2),'%')
+    print('ETH opportunity: ', round((((master['bid_eth'].max()/master['ask_eth'].min()) - 1) * 100), 2),'%')
+    master['btc return %'] = round((master['bid_btc'].max() - master['ask_btc'])/master['ask_btc'],4)*100
+    master['eth return %'] = round((master['bid_eth'].max() - master['ask_eth'])/master['ask_eth'],4)*100
     print(master)
-    print('BTC opportunity: ', round((((master['BTC'].max()/master['BTC'].min()) - 1) * 100), 2),'%')
-    print('ETH opportunity: ', round((((master['ETH'].max()/master['ETH'].min()) - 1) * 100), 2),'%')
     master.to_excel('./Outputs/arby_matrix %s.xlsx' %datetime.datetime.strftime(datetime.datetime.now(), '%Y-%m-%d-%H-%M-%S'))
     print("--- %s seconds ---" % (time.time() - start_time))
 

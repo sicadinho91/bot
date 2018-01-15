@@ -59,7 +59,6 @@ def poloniex():
     trades.to_excel('./Outputs/bot_trades %s.xlsx' %datetime.datetime.strftime(datetime.datetime.now(), '%Y-%m-%d-%H-%M-%S'))
     charts.to_excel('./Outputs/bot_charts %s.xlsx' %datetime.datetime.strftime(datetime.datetime.now(), '%Y-%m-%d-%H-%M-%S'))
     
-    
 def main():
     start_time = time.time()
     print('Exchange: Poloniex')
