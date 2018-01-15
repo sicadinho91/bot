@@ -29,7 +29,7 @@ def get_trades(tickers):
         if len(data)==0:
             data = trades
         else:
-            data.append(trades)
+            data = data.append(trades)
         print(trades)
     return data
         
@@ -46,7 +46,7 @@ def get_chart(tickers):
             if len(data)==0:
                 data = charts
             else:
-                data.append(charts)
+                data = data.append(charts)
             print(charts)
     data['datetime'] = pd.to_datetime(data['date'], unit='s')
     return data       
