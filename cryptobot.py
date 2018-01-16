@@ -58,6 +58,11 @@ def poloniex():
     charts = get_chart(t)
     trades.to_excel('./Outputs/bot_trades %s.xlsx' %datetime.datetime.strftime(datetime.datetime.now(), '%Y-%m-%d-%H-%M-%S'))
     charts.to_excel('./Outputs/bot_charts %s.xlsx' %datetime.datetime.strftime(datetime.datetime.now(), '%Y-%m-%d-%H-%M-%S'))
+    t_charts={}
+    t_trades={}
+    for i in t:
+        t_charts[i] = charts[charts['ticker']==i]
+        t_trades[i] = trades[trades['ticker']==i]
     
 def main():
     start_time = time.time()
