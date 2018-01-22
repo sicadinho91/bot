@@ -48,6 +48,32 @@ def bband(df):
         df['%i middle band'%i] = df['%i SMA'%i]
     return df
     
+def strength(df):
+    i = 14
+    b = [14, 7]
+    df['LW %R'] = ((df['high'].rolling(window=i).max()-df['rate'])/(df['high'].rolling(window=i).max()-df['low'].rolling(window=i).min()))*-100
+    df['Delta_LW %R'] = df['LW %R'] - df['LW %R'].shift(-1)
+    for n in b:
+        delta = df['rate']-df['rate'].shift(1)
+        dUp, dDown = delta.copy(), delta.copy()
+        dUp[dUp < 0] = 0
+        dDown[dDown > 0] = 0
+        RolUp = dUp.rolling(window=n).mean()
+        RolDown = dDown.rolling(window=n).mean().abs()
+        RS = RolUp / RolDown
+        df['RSI %i'%n] = 100-(100/(1+RS))
+        df['Delta_RSI %i'%n] = df['RSI %i'%n] - df['RSI %i'%n].shift(-1)
+    return df
+    
+def stoch(df):
+    i, b = 14, 3
+    df['stoch k'] = (df['rate']-df['low'].rolling(window=i).min())/(df['high'].rolling(window=i).max()-df['low'].rolling(window=i).min())*100
+    df['Delta_stoch k'] = df['stoch k'] - df['stoch k'].shift(-1)
+    df['stoch d'] = df['stoch k'].rolling(window=b).mean()
+    df['Delta_stoch d'] = df['stoch d'] - df['stoch d'].shift(-1)
+    df['slow d'] = df['stoch d'].rolling(window=b).mean()
+    return df
+    
 def get_tickers(url):
     tickers = []
     t = retrieve(url)
@@ -89,8 +115,17 @@ def get_chart(tickers):
         for p in [300, 900, 1800, 7200, 14400, 86400]:
             url = 'https://poloniex.com/public?command=returnChartData&currencyPair={}&start={}&end={}&period={}'.format(i,before,now, p)
             charts = pd.DataFrame(retrieve(url))
+            charts = charts.rename(columns={'close':'rate'})
             charts['ticker'] = i
             charts['timedelta'] = p
+            charts['rate'] = charts['rate'].astype('float')
+            ema(charts)
+            sma(charts)
+            macd(charts)
+            move(charts)
+            bband(charts)
+            strength(charts)
+            stoch(charts)
             if len(data)==0:
                 data = charts
             else:
