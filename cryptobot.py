@@ -2,7 +2,6 @@ import requests
 import json
 import time
 import datetime
-import csv
 import numpy as np
 import pandas as pd
 
@@ -12,14 +11,14 @@ def retrieve(url, params=None):
     return data
     
 def ema(df):
-    per = [5, 12, 20, 26]
+    per = [12, 20, 26]
     for i in per:
         df['%i EMA'%i] = df['rate'].ewm(ignore_na=False, span=i, min_periods=i, adjust=True).mean()
     df['12-26 EMA'] = df['12 EMA'] - df['26 EMA']
     return df
 
 def sma(df):
-    per = [5, 6, 10, 20]
+    per = [10, 20]
     for i in per:
         df['%i SMA'%i] = df['rate'].rolling(window=i).mean()
         df['Delta_%i SMA' %i] = df['%i SMA'%i] - df['%i SMA'%i].shift(-1)
@@ -40,9 +39,9 @@ def move(df):
     return df
 
 def bband(df):
-    per = [5, 10, 20]
+    per = [10, 20]
     for i in per:
-        std = df['rate'].rolling(window=i).std()
+        std = df['rate'].rolling(window=i).std() * 2
         df['%i upper band'%i] = df['%i SMA'%i] + std
         df['%i lower band'%i] = df['%i SMA'%i] - std
         df['%i middle band'%i] = df['%i SMA'%i]
@@ -74,6 +73,62 @@ def stoch(df):
     df['slow d'] = df['stoch d'].rolling(window=b).mean()
     return df
     
+def adx(df):
+    hl = df['high'] - df['low']
+    ahr = abs(df['high'] - df['rate'].shift(1))
+    alr = abs(df['low'] - df['rate'].shift(1))
+    hs = df['high'] - df['high'].shift(1)
+    ls = df['low'].shift(1) - df['low']
+    tr = []
+    pdm = []
+    ndm = []
+    for i in range(0,len(hl)):
+        tr.append(max(hl[i],ahr[i],alr[i]))
+        if (hs[i] > ls[i]):
+            pdm.append(max(hs[i],0))
+            ndm.append(0)
+        else:
+            ndm.append(max(ls[i],0))
+            pdm.append(0)
+    tr, pdm, ndm = pd.Series(tr), pd.Series(pdm), pd.Series(ndm)
+    tr14, pdm14, ndm14 = [], [], []
+    for i in range(0,len(tr)):
+        if i < 14:
+            tr14.append(np.nan)
+            pdm14.append(np.nan)
+            ndm14.append(np.nan)
+        elif i == 14:
+            tr14.append(tr.loc[1:14].sum())
+            pdm14.append(pdm.loc[1:14].sum())
+            ndm14.append(ndm.loc[1:14].sum())
+        else:
+            tr14.append(tr14[i-1] - (tr14[i-1]/14) + tr[i])
+            pdm14.append(pdm14[i-1] - (pdm14[i-1]/14) + pdm[i])
+            ndm14.append(ndm14[i-1] - (ndm14[i-1]/14) + ndm[i])
+    tr14, pdm14, ndm14 = pd.Series(tr14), pd.Series(pdm14), pd.Series(ndm14)        
+    pdi14 = (100 * (pdm14/tr14))
+    ndi14 = (100 * (ndm14/tr14))
+    di14d = abs(pdi14 - ndi14)
+    di14s = pdi14 + ndi14
+    dx = pd.Series(100 * (di14d/di14s))
+    adx = []
+    for i in range(0,len(df['rate'])):
+        if i < 14:
+            adx.append(np.nan)
+        elif i == 27:
+            adx.append(dx.loc[14:i].mean())
+        else:
+            adx.append(((adx[i-1]*13)+dx.loc[i])/14)
+    pdi14 = pd.Series(pdi14)
+    pdi14.name = '+DI'
+    ndi14 = pd.Series(ndi14)
+    ndi14.name = '-DI'
+    adx = pd.Series(adx)
+    adx.name = 'ADX'
+    df = pd.concat([df, pdi14, ndi14, adx], join='outer', axis=1)
+    print(df)
+    return df
+    
 def get_tickers(url):
     tickers = []
     t = retrieve(url)
@@ -92,12 +147,14 @@ def get_trades(tickers):
         trades = pd.DataFrame(retrieve(url))
         trades['ticker'] = i
         trades['rate'] = trades['rate'].astype('float')
-        ema(trades)
-        sma(trades)
-        macd(trades)
-        move(trades)
-        bband(trades)
-        trades = trades[np.isfinite(trades['macd signal'])]
+        trades['total'] = trades['total'].astype('float')
+        trades['amount'] = trades['amount'].astype('float')
+        #ema(trades)
+        #sma(trades)
+        #macd(trades)
+        #move(trades)
+        #bband(trades)
+        #trades = trades[np.isfinite(trades['macd signal'])]
         print(trades)
         if len(data)==0:
             data = trades
@@ -110,9 +167,10 @@ def get_trades(tickers):
 def get_chart(tickers):
     data = pd.DataFrame()
     now = int(time.mktime(datetime.datetime.now().timetuple()))
-    before = int(time.mktime((datetime.datetime.now() - datetime.timedelta(days=20)).timetuple()))
+    p_dict = {300:2, 900:6, 1800:12, 7200:48, 14400:96, 86400:576}
     for i in tickers:
-        for p in [300, 900, 1800, 7200, 14400, 86400]:
+        for p in p_dict:
+            before = int(time.mktime((datetime.datetime.now() - datetime.timedelta(days=p_dict[p])).timetuple()))
             url = 'https://poloniex.com/public?command=returnChartData&currencyPair={}&start={}&end={}&period={}'.format(i,before,now, p)
             charts = pd.DataFrame(retrieve(url))
             charts = charts.rename(columns={'close':'rate'})
@@ -126,12 +184,17 @@ def get_chart(tickers):
             bband(charts)
             strength(charts)
             stoch(charts)
+            charts = adx(charts)
             if len(data)==0:
                 data = charts
             else:
                 data = data.append(charts)
             print(charts)
     data['datetime'] = pd.to_datetime(data['date'], unit='s')
+    data['Bull Bollinger Cross'] = np.where(((data['rate'] > data['20 upper band']) & (data['rate'].shift(1) < data['20 upper band'].shift(1))), 1, "")
+    data['Bear Bollinger Cross'] = np.where(((data['rate'] < data['20 lower band']) & (data['rate'].shift(1) > data['20 lower band'].shift(1))), -1, "")
+    data['Bull ADX'] = np.where(((data['+DI'] > data['-DI']) & (data['+DI'].shift(1) < data['-DI'].shift(1)) & (data['ADX'] > 20)), 1, "")
+    data['Bear ADX'] = np.where(((data['-DI'] > data['+DI']) & (data['-DI'].shift(1) < data['+DI'].shift(1)) & (data['ADX'] > 20)), -1, "")
     return data       
               
 def poloniex():
@@ -149,6 +212,7 @@ def poloniex():
     print(t_charts)
     print(t_trades)
     #t_charts['USDT_BTC'].loc[t_charts['USDT_BTC']['timedelta']==300]
+    #pd.DataFrame(charts[charts['ticker']=='USDT_ETH']).to_excel('./Outputs/eth_charts.xlsx')
 
 def main():
     start_time = time.time()
